@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{overflow:hidden;font-family:Arial;color:white;background:#000}
+#game{width:100vw;height:100vh;position:relative;overflow:hidden;
+background: linear-gradient(to bottom, #000428 0%, #004e92 40%, #1a0033 70%, #000000 100%);
+}
+/* Stars */
+.star{position:absolute;background:white;border-radius:50%;animation:fall linear infinite}
+@keyframes fall{from{transform:translateY(-10px)}to{transform:translateY(110vh)}}
+/* City background */
+#city{position:absolute;bottom:0;width:100%;height:140px;display:flex;align-items:flex-end;justify-content:space-around;opacity:0.8}
+.building{background:#111133;border:1px solid #333366}
+#topbar{position:absolute;top:0;left:0;right:0;padding:10px;display:flex;justify-content:space-between;font-size:18px;font-weight:bold;z-index:10;background:rgba(0,0,0,0.5)}
+#levelBar{position:absolute;top:45px;left:10px;right:10px;height:10px;background:#333;border-radius:10px;overflow:hidden;z-index:10}
+#levelFill{height:100%;width:0%;background:linear-gradient(90deg,#00ff00,#ffff00,#ff0000);transition:0.3s}
+#info{position:absolute;top:70px;width:100%;text-align:center;color:yellow;font-size:18px;font-weight:bold;z-index:10;text-shadow:2px 2px 4px black}
+#player{width:60px;height:60px;position:absolute;bottom:90px;left:45%;font-size:45px;text-align:center;z-index:5;filter:drop-shadow(0 0 10px #00ff00)}
+.missile{width:35px;height:60px;position:absolute;border-radius:10px;font-size:30px;text-align:center;z-index:4;filter:drop-shadow(0 0 8px red)}
+.coin{width:32px;height:32px;background:gold;border-radius:50%;position:absolute;z-index:4;box-shadow:0 0 15px gold;font-size:20px;text-align:center;line-height:32px}
+#leader{position:absolute;top:100px;right:10px;background:rgba(0,0,0,0.7);padding:10px;border-radius:10px;font-size:13px;z-index:10;min-width:140px;border:1px solid gold}
+#leader b{color:gold}
+#btns{position:absolute;bottom:15px;width:100%;display:flex;justify-content:center;gap:10px;z-index:20}
+button{padding:12px 20px;font-size:16px;font-weight:bold;border:none;border-radius:15px;background:#00ff00;color:black}
+#muteBtn{background:#ffcc00}
+#gameover{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:30;text-align:center}
+#gameover h1{font-size:35px;color:red}
+#gameover h2{color:gold;margin:10px}
+#newBest{color:#00ff00;font-size:20px;display:none}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="topbar"><span>🚀 MUSADDIQ</span><span id="score">Score: 0</span><span id="levelTxt">LVL 1</span></div>
+  <div id="levelBar"><div id="levelFill"></div></div>
+  <div id="info">DRAG to move! Dodge missiles!</div>
+  <div id="leader"><b>🏆 LEADERBOARD</b><div id="board">Loading...</div></div>
+  <div id="city"></div>
+  <div id="player">🛩️</div>
+  <div id="btns">
+    <button onclick="toggleSound()" id="muteBtn">🔊 SOUND ON</button>
+    <button onclick="location.reload()">🔄 RESTART</button>
+  </div>
+  <div id="gameover">
+    <h1>💥 GAME OVER!</h1>
+    <h2 id="finalScore">Score: 0</h2>
+    <div id="newBest">🎉 NEW BEST SCORE MUSADDIQ!</div>
+    <p id="finalLevel" style="margin:10px;color:white"></p>
+    <button onclick="location.reload()" style="margin-top:15px;padding:15px 40px;font-size:20px">▶️ PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+// ===== SOUND - No files needed, made by code =====
+let soundOn = true;
+let audioCtx = null;
+function beep(freq, dur, type){
+  if(!soundOn) return;
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    let o = audioCtx.createOscillator();
+    let g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = type || 'square'; o.frequency.value = freq;
+    g.gain.value = 0.15;
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  }catch(e){}
+}
+function soundCoin(){ beep(900,0.15,'sine'); setTimeout(()=>beep(1300,0.2,'sine'),80); }
+function soundMissile(){ beep(200,0.3,'sawtooth'); }
+function soundGameOver(){ beep(400,0.4,'sawtooth'); setTimeout(()=>beep(200,0.4,'sawtooth'),300); setTimeout(()=>beep(100,0.6,'sawtooth'),600); }
+function soundLevelUp(){ beep(600,0.1,'sine'); setTimeout(()=>beep(800,0.1,'sine'),100); setTimeout(()=>beep(1000,0.2,'sine'),200); }
+function toggleSound(){
+  soundOn = !soundOn;
+  document.getElementById('muteBtn').innerText = soundOn ? '🔊 SOUND ON' : '🔇 SOUND OFF';
+  if(soundOn) beep(800,0.1,'sine');
+}
+
+// ===== BACKGROUND - Stars + City for A9+ =====
+let game = document.getElementById('game');
+for(let i=0;i<60;i++){
+  let s=document.createElement('div');
+  s.className='star';
+  let size=Math.random()*3+1;
+  s.style.width=size+'px'; s.style.height=size+'px';
+  s.style.left=Math.random()*100+'%'; s.style.top=Math.random()*100+'%';
+  s.style.animationDuration=(Math.random()*5+3)+'s';
+  s.style.opacity=Math.random();
+  game.appendChild(s);
+}
+let city=document.getElementById('city');
+for(let i=0;i<12;i++){
+  let b=document.createElement('div');
+  b.className='building';
+  b.style.width='8%'; b.style.height=(Math.random()*100+30)+'px';
+  b.innerHTML='<div style="color:yellow;font-size:8px;text-align:center">🏙️</div>';
+  city.appendChild(b);
+}
+
+// ===== LEADERBOARD - Saved on your A9+ =====
+function getBoard(){
+  let b = JSON.parse(localStorage.getItem('musaddiq_board') || '[]');
+  return b;
+}
+function saveScore(score, level){
+  let b = getBoard();
+  b.push({name:'MUSADDIQ', score:score, level:level, date:new Date().toLocaleDateString()});
+  b.sort((a,b2)=>b2.score-a.score);
+  b = b.slice(0,5);
+  localStorage.setItem('musaddiq_board', JSON.stringify(b));
+  return b;
+}
+function showBoard(){
+  let b = getBoard();
+  if(b.length==0){ document.getElementById('board').innerHTML='No scores yet<br>Be first!'; return; }
+  let html='';
+  b.forEach((x,i)=>{
+    let medal = i==0?'🥇':i==1?'🥈':i==2?'🥉':'🔹';
+    html+=`${medal} ${x.name} - ${x.score}<br><small>LVL ${x.level}</small><br>`;
+  });
+  document.getElementById('board').innerHTML=html;
+}
+showBoard();
+
+// ===== GAME - INFINITE LEVELS =====
+let player=document.getElementById('player');
+let scoreEl=document.getElementById('score');
+let levelTxt=document.getElementById('levelTxt');
+let levelFill=document.getElementById('levelFill');
+let info=document.getElementById('info');
+let score=0, over=false, px=45, level=1, missileSpeed=4, spawnTime=600;
+
+function movePlayer(clientX){
+  px=(clientX/window.innerWidth*100)-5;
+  player.style.left=px+'%';
+}
+game.addEventListener('touchmove', e=>{ movePlayer(e.touches[0].clientX); });
+game.addEventListener('mousemove', e=>{ movePlayer(e.clientX); });
+
+function checkLevelUp(){
+  let newLevel = Math.floor(score/50)+1;
+  if(newLevel>level){
+    level=newLevel;
+    missileSpeed = 4 + level*0.8;
+    spawnTime = Math.max(200, 600 - level*40);
+    levelTxt.innerText='LVL '+level;
+    info.innerText=`🔥 LEVEL ${level} UNLOCKED! Faster missiles!`;
+    soundLevelUp();
+    setTimeout(()=>{ if(!over) info.innerText=`Level ${level} - Keep going Musaddiq!`; },2000);
+  }
+  levelTxt.innerText='LVL '+level;
+  levelFill.style.width=((score%50)/50*100)+'%';
+}
+
+function spawnMissile(){
+  if(over) return;
+  let m=document.createElement('div');
+  m.className='missile'; m.innerHTML='🚀';
+  m.style.left=Math.random()*90+'%'; m.style.top='-60px';
+  game.appendChild(m);
+  let y=-60;
+  let speed=missileSpeed+Math.random()*3;
+  soundMissile();
+  let iv=setInterval(()=>{
+    if(over){clearInterval(iv); return;}
+    y+=speed; m.style.top=y+'px';
+    let mx=parseFloat(m.style.left);
+    if(Math.abs(mx-px)<7 && y>window.innerHeight-200){
+      clearInterval(iv); endGame(); return;
+    }
+    if(y>window.innerHeight){clearInterval(iv); m.remove(); score++; scoreEl.innerText='Score: '+score; checkLevelUp();}
+  },20);
+}
+function spawnCoin(){
+  if(over) return;
+  let c=document.createElement('div');
+  c.className='coin'; c.innerHTML='🪙';
+  c.style.left=Math.random()*90+'%'; c.style.top='-30px';
+  game.appendChild(c);
+  let y=-30;
+  let iv=setInterval(()=>{
+    if(over){clearInterval(iv); return;}
+    y+=3; c.style.top=y+'px';
+    let cx=parseFloat(c.style.left);
+    if(Math.abs(cx-px)<7 && y>window.innerHeight-200){clearInterval(iv); c.remove(); score+=10; scoreEl.innerText='Score: '+score; soundCoin(); checkLevelUp();}
+    if(y>window.innerHeight){clearInterval(iv); c.remove();}
+  },20);
+}
+function endGame(){
+  over=true;
+  soundGameOver();
+  let oldBest = getBoard()[0] ? getBoard()[0].score : 0;
+  let isNewBest = score > oldBest && score>0;
+  saveScore(score, level);
+  showBoard();
+  document.getElementById('finalScore').innerText='Score: '+score;
+  document.getElementById('finalLevel').innerText='You reached LEVEL '+level+' - Infinite levels, keep going!';
+  if(isNewBest) document.getElementById('newBest').style.display='block';
+  document.getElementById('gameover').style.display='flex';
+}
+
+setInterval(()=>{ if(!over) spawnMissile(); }, 550);
+setInterval(spawnCoin, 1400);
+// Background music loop - soft
+setInterval(()=>{ if(!over && soundOn) beep(220,0.05,'sine'); }, 2000);
+</script>
+</body>
+</html>
